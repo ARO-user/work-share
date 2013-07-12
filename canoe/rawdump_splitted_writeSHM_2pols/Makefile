@@ -13,16 +13,16 @@
 #-----------------------------------------------------------------------------
 #
 #-----------------------------------------------------------------------------
-INCLUDEDIR	= -I/home/pen/Driver_new/Driver -I/opt/intel/ipp/5.2/ia32/include/ 
+INCLUDEDIR	= -I/home/jroy/Driver_new/Driver -I/opt/intel/ipp/5.2/ia32/include/ 
 CFLAGS		= -O3 -xN -openmp -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE=1 -D_LARGEFILE_SOURCE=1 ${INCLUDEDIR} -DPARALLEL -DSHM_DUMP # -ggdb -c -Wall 
 #CFLAGS		= -O3 -xN -openmp -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE=1 -D_LARGEFILE_SOURCE=1 ${INCLUDEDIR} -DPARALLEL 
 CFLAGSX          = -O3 -c -Wall ${INCLUDEDIR}
 #CC		= /mnt/shared/pen/lam-7.1.3/bin/mpicc #gcc
-#CC		=   /opt/openmpi-1.2.2/bin/mpicc #gcc
-CC              =   /opt/openmpi/1.2.2-intel-9.1/bin/mpicc #gcc
-CXX             =   /opt/openmpi/1.2.2-intel-9.1/bin/mpiCC #gcc
+CC		=   /opt/openmpi-1.2.2/bin/mpicc #gcc
+#CC              =   /opt/openmpi/1.2.2-intel-9.1/bin/mpicc #gcc
+#CXX             =   /opt/openmpi/1.2.2-intel-9.1/bin/mpiCC #gcc
 #CXX   = /mnt/shared/pen/lam-7.1.3/bin/mpiCC
-#CXX   =   /opt/openmpi-1.2.2/bin/mpiCC
+CXX   =   /opt/openmpi-1.2.2/bin/mpiCC
 CCC   = icc
 TARGET		= mpi_dual
 

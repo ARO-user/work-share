@@ -57,6 +57,8 @@ extern "C" {
 const unsigned int AcqSize = 32*1024*1024;
 const unsigned int BufferSize = 64*1024*1024;
 #endif
+#define MAX(x,y) ((x>y)?x:y)
+
 
 int AcqNum = 0;
 
@@ -194,7 +196,7 @@ void SetupAcq(AL4108 *brd, int mode, int sam_bit, int sam_clk, int dump_bit, int
   {
     	printf("Sending First Trigger, rank %d\n",rank);
 // ULP june 11, 2013
-	DoTrigger(brd);
+	//DoTrigger(brd);
   }
 #else
   printf("Sending First Trigger\n");
@@ -289,7 +291,7 @@ void SetupAcq(AL4108 *brd, int mode, int sam_bit, int sam_clk, int dump_bit, int
 #endif
 	  if (mode == 0)
 	  { if(lp_cnt==2){
-	      FILE *svol = fopen("/home/pen/gain/rawdump_TGC.dat","w");
+	      FILE *svol = fopen("/home/jroy/gain/rawdump_TGC.dat","w");
 	      if (svol == NULL) perror("fopen");
 	      if(sam_bit==4){
                     for(int j=0; j<20000; j=j+2)
@@ -540,13 +542,14 @@ int main(int argc, char *argv[])
     Board->SetInputOffset(3, 0);           // Setup the Input Offset
 
     // routine for Gain adjustment read the gain table from gaintab.dat
-        FILE *gtab = fopen("/home/pen/gain/gaintab.dat","r");
+        FILE *gtab = fopen("/home/gsbuser/gain/gaintab.dat","r");
         if (gtab == NULL) {perror("fopen");exit(-1);}
         int gain[4];
-        for(int j=0; j<4; j++)
+        for(int j=0; j<4; j++){
         fscanf(gtab,"%d", &gain[j]);
+		//gain[j]=MAX(255,gain[j]+3);
+	}
         Board->SetUpTGC(gain[0],gain[1],gain[2],gain[3]);
-        //Board->SetUpTGC(100,100,100,100);
     
 
 #ifdef PARALLEL
@@ -554,9 +557,11 @@ int main(int argc, char *argv[])
 			printf("master board, rank: %d\n",rank);
 #endif
 		  	Board->CMS->Set(3);  // 3 -> 5 MHz clock in
-		  	Board->CMS->Set(1);  // self
+		  	//Board->CMS->Set(1);  // self
                         
 			Board->TRIGPOL->Set(0);  // As the GPS is sync to rising edge and dist box invert the signal
+			Board->TRIGSRC->Set(5);// PLL sync
+			//Board->TRIGSRC->Set(0); // software
                         Board->BNCTERM->Set(1);
                         Board->BNCOUTEN->Set(0);
                         Board->BNCOUT->Set(0);

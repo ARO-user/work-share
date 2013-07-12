@@ -12,7 +12,8 @@
 #include "omp.h"
 #include <xmmintrin.h>
 #include <emmintrin.h>
-
+#include <strings.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -22,7 +23,7 @@
 
 #define decimate 1
 
-#define NBUF 30
+#define NBUF 50
 static inline u_int64_t
 rdtsc ()
 {         u_int64_t d;
@@ -67,7 +68,7 @@ void corr_driver(signed char *buffer, int dump_bit, int nint_corr, struct timeva
 	static int iteration = 0;
 	static int g_size = 2;
 	static int nint = 0;
-	static int rankcnt;
+	static int rankcnt,nodenum;
 	static int r_array[(NUM_PROCESSES-1)*2];
 	static float delay_t0[NCHAN*NUM_CORR],delay_ti[2][NCHAN*NUM_CORR],dd_t0[2][NCHAN*NUM_CORR];
 	static float acq_chunktime, ffttime, pi, tstep, blocktime;
@@ -82,6 +83,11 @@ void corr_driver(signed char *buffer, int dump_bit, int nint_corr, struct timeva
   	nchunk=ACQ_LEN/(decimate*CORRLEN);
 
 	if (firsttime == 1) {
+                char hostname[255];
+                char *suffix;
+                gethostname(hostname, 255);
+                suffix=strstr(hostname,"node")+4;
+                sscanf(suffix,"%d",&nodenum);
 		MPI_Comm_size(MPI_COMM_WORLD,&numprocs);
 		MPI_Comm_rank(MPI_COMM_WORLD,&myrank);
 		omp_set_nested(1);
@@ -130,23 +136,6 @@ void corr_driver(signed char *buffer, int dump_bit, int nint_corr, struct timeva
 
 #ifdef RAW_DUMP
 		if(myrank >= numprocs/2)	{
-                fpn[0] = open("/mnt/data1/pen/raw_voltage1.dat", O_CREAT|O_TRUNC|O_WRONLY|O_SYNC,S_IRUSR|S_IWUSR);
-                if (fpn[0]<0 ) perror(" raw voltage open");
-                fpn[1] = open("/mnt/data2/pen/raw_voltage2.dat", O_CREAT|O_TRUNC|O_WRONLY|O_SYNC,S_IRUSR|S_IWUSR);
-                if (fpn[1]<0 ) perror(" raw voltage open");
-                fpn[2] = open("/mnt/data3/pen/raw_voltage3.dat", O_CREAT|O_TRUNC|O_WRONLY|O_SYNC,S_IRUSR|S_IWUSR);
-                if (fpn[2]<0 ) perror(" raw voltage open");
-                fpn[3] = open("/mnt/data1/pen/raw_voltage4.dat", O_CREAT|O_TRUNC|O_WRONLY|O_SYNC,S_IRUSR|S_IWUSR);
-                if (fpn[3]<0 ) perror(" raw voltage open");
-		ftsamp[0]=fopen("/mnt/data1/pen/timestamp_voltage1.dat","w");
-                if (ftsamp[0]==NULL ) perror(" timestamp open");
-		ftsamp[1]=fopen("/mnt/data2/pen/timestamp_voltage2.dat","w");
-                if (ftsamp[1]==NULL ) perror(" timestamp open");
-		ftsamp[2]=fopen("/mnt/data3/pen/timestamp_voltage3.dat","w");
-                if (ftsamp[2]==NULL ) perror(" timestamp open");
-		ftsamp[3]=fopen("/mnt/data1/pen/timestamp_voltage4.dat","w");
-                if (ftsamp[3]==NULL ) perror(" timestamp open");
-		fseq=fopen("/mnt/data1/pen/sequence.dat","w");
 		}
 
 #endif		
@@ -189,8 +178,12 @@ void corr_driver(signed char *buffer, int dump_bit, int nint_corr, struct timeva
 		if (myrank<numprocs/2){
 		printf("send: iteration=%d\n",iteration);
                 itarget=(myrank)%(numprocs/2)+numprocs/2;
-		        MPI_Bcast(&timestamp,sizeof(struct timeval),MPI_CHAR,0,MPI_COMM_WORLD);
-                MPI_Isend(buffer, ACQ_LEN*3/4, MPI_CHAR, itarget, 100, MPI_COMM_WORLD, request);
+                timestamp.tv_usec=timestamp.tv_usec>>8;
+                timestamp.tv_usec=timestamp.tv_usec<<8;
+                timestamp.tv_usec+=nodenum;
+
+		        MPI_Send(&timestamp,sizeof(struct timeval),MPI_CHAR,itarget,0,MPI_COMM_WORLD);
+                MPI_Isend(buffer, ACQ_LEN*4/4, MPI_CHAR, itarget, 100, MPI_COMM_WORLD, request);
                 MPI_Waitall(1,request,status);
 		//printf("done send: iteration=%d\n",iteration);
 		}
@@ -198,9 +191,9 @@ void corr_driver(signed char *buffer, int dump_bit, int nint_corr, struct timeva
                 itarget=(NUM_CORR+myrank)%(numprocs/2);
 		while(1){
 		printf("recv: iteration=%d\n",iteration);
-		        MPI_Bcast(&timestamp,sizeof(struct timeval),MPI_CHAR,0,MPI_COMM_WORLD);
+		        MPI_Recv(&timestamp,sizeof(struct timeval),MPI_CHAR,itarget,0,MPI_COMM_WORLD,status);
 			timestampbuf[iteration%NBUF]=timestamp;
-                MPI_Irecv(rbuf[iteration%NBUF], ACQ_LEN*3/4, MPI_CHAR, itarget, 100, MPI_COMM_WORLD,request);
+                MPI_Irecv(rbuf[iteration%NBUF], ACQ_LEN*4/4, MPI_CHAR, itarget, 100, MPI_COMM_WORLD,request);
                 MPI_Waitall(1,request,status);
 		iteration++;
 #pragma omp flush (iteration,rbuf)
@@ -223,12 +216,30 @@ void corr_driver(signed char *buffer, int dump_bit, int nint_corr, struct timeva
 
 		ilen=ACQ_LEN;
 		printf("write section\n");
+                fpn[0] = open("/mnt/a/gsbuser/VLBI/raw_voltage.all.test_2_july2.1.dat", O_CREAT|O_TRUNC|O_WRONLY|O_SYNC,S_IRUSR|S_IWUSR);
+                if (fpn[0]<0 ) perror(" raw voltage open");
+                fpn[1] = open("/mnt/b/gsbuser/VLBI/raw_voltage.all.test_2_july2.2.dat", O_CREAT|O_TRUNC|O_WRONLY|O_SYNC,S_IRUSR|S_IWUSR);
+                if (fpn[1]<0 ) perror(" raw voltage open");
+                fpn[2] = open("/mnt/c/gsbuser/VLBI/raw_voltage.all.test_2_july2.3.dat", O_CREAT|O_TRUNC|O_WRONLY|O_SYNC,S_IRUSR|S_IWUSR);
+                if (fpn[2]<0 ) perror(" raw voltage open");
+                fpn[3] = open("/mnt/d/gsbuser/VLBI/raw_voltage.all.test_2_july2.4.dat", O_CREAT|O_TRUNC|O_WRONLY|O_SYNC,S_IRUSR|S_IWUSR);
+                if (fpn[3]<0 ) perror(" raw voltage open");
+		ftsamp[0]=fopen("/mnt/a/gsbuser/VLBI/timestamp_voltage.all.test_2_july2.1.dat","w");
+                if (ftsamp[0]==NULL ) perror(" timestamp open");
+		ftsamp[1]=fopen("/mnt/b/gsbuser/VLBI/timestamp_voltage.all.test_2_july2.2.dat","w");
+                if (ftsamp[1]==NULL ) perror(" timestamp open");
+		ftsamp[2]=fopen("/mnt/c/gsbuser/VLBI/timestamp_voltage.all.test_2_july2.3.dat","w");
+                if (ftsamp[2]==NULL ) perror(" timestamp open");
+		ftsamp[3]=fopen("/mnt/d/gsbuser/VLBI/timestamp_voltage.all.test_2_july2.4.dat","w");
+                if (ftsamp[3]==NULL ) perror(" timestamp open");
+		fseq=fopen("/mnt/a/gsbuser/VLBI/sequence.all.test_2_july2.dat","w");
 		omp_set_num_threads(4);	
 #pragma omp parallel for default(none) private(time_string,time_ms,local_t,tm1,start,icount,imp,current,sec) shared(fpn,ilen,rbuf,iteration,stderr,myrank,timestampbuf,ftsamp,fseq) schedule(dynamic,1)
                 for (iter=2;iter<10000000;iter++) {
+                int nodenumremote;
 #pragma omp flush (iteration)
-		if (iteration-iter>NBUF/2) {
-			fprintf(stderr,"BUFFER LOST, iter=%d iterarion=%d\n",iter,iteration);
+		if (iteration-iter>NBUF*3/4) {
+			fprintf(stderr,"BUFFER LOST, iter=%d iteration=%d\n",iter,iteration);
 			continue;
 			}
 			imp=omp_get_thread_num();
@@ -246,12 +257,16 @@ void corr_driver(signed char *buffer, int dump_bit, int nint_corr, struct timeva
 
 			printf("iter=%d thread=%d \n",iter,imp);
         	icount=write(fpn[imp%4],rbuf[iter%NBUF],ilen);
-		if (icount != ilen) fprintf(stderr,"only wrote %d of %d bytes\n",icount,ilen);
+		if (icount != ilen) {
+			fprintf(stderr,"only wrote %d of %d bytes\n",icount,ilen);
+			sleep(360000);
+		}
 		time_ms = timestampbuf[iter%NBUF].tv_usec/1000000.000;
+                nodenumremote = timestampbuf[iter%NBUF].tv_usec&0xff;
 		local_t = localtime(&timestampbuf[iter%NBUF].tv_sec);
 		tm1 = local_t->tm_sec + local_t->tm_min*60 + local_t->tm_hour*3600 + time_ms;
         strftime (time_string, sizeof (time_string), "%Y %m %d %H %M %S", local_t);
-	if (fprintf(ftsamp[imp%4],"%s %lf \n", time_string, time_ms)<0) perror("fprintf");
+        if (fprintf(ftsamp[imp%4],"%s %lf %d\n", time_string, time_ms,nodenumremote)<0) perror("fprintf");
 	fflush(ftsamp[imp%4]);
 	ftime(&current);
         sec = (((current.time - start.time) * 1000) + (current.millitm - start.millitm)) / 1000.0;
